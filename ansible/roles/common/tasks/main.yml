@@ -7,6 +7,7 @@
 - name: Zona horaria
   ansible.builtin.command: timedatectl set-timezone {{ timezone }}
   when: tz_now.stdout | trim != timezone
+  changed_when: true
 
 - name: Paquetes base (appliance mínimo)
   ansible.builtin.apt:
