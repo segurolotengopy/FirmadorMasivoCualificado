@@ -1,0 +1,52 @@
+---
+# Descubre el token USB conectado: VID/PID, número de serie (para udev) y objetos PKCS#11
+# (etiquetas de token/certificado/clave). Con esta salida se completan host_vars/<nodo>.yml.
+- name: Descubrimiento del token criptográfico
+  hosts: signing_nodes
+  become: true
+  vars:
+    pkcs11_module_path: /usr/lib/x86_64-linux-gnu/opensc-pkcs11.so
+  tasks:
+    - name: Asegurar middleware mínimo
+      ansible.builtin.apt:
+        name: [pcscd, libccid, opensc, usbutils]
+        update_cache: true
+
+    - name: Asegurar pcscd activo
+      ansible.builtin.systemd:
+        name: pcscd.socket
+        state: started
+        enabled: true
+
+    - name: Dispositivos USB de tarjeta inteligente (VID:PID y serial)
+      ansible.builtin.shell: |
+        set -o pipefail
+        for d in /sys/bus/usb/devices/*; do
+          if [ -f "$d/idVendor" ] && [ -f "$d/serial" ]; then
+            cls=$(cat "$d/bInterfaceClass" 2>/dev/null || cat "$d"/*/bInterfaceClass 2>/dev/null | head -1)
+            [ "$cls" = "0b" ] && echo "vendor=$(cat $d/idVendor) product=$(cat $d/idProduct) serial=$(cat $d/serial) manufacturer=$(cat $d/manufacturer 2>/dev/null) product_name=$(cat $d/product 2>/dev/null)"
+          fi
+        done
+      args:
+        executable: /bin/bash
+      register: usb
+      changed_when: false
+
+    - name: Slots y tokens PKCS#11
+      ansible.builtin.command: pkcs11-tool --module {{ pkcs11_module_path }} -L
+      register: slots
+      changed_when: false
+      failed_when: false
+
+    - name: Objetos públicos del token (certificados, etiquetas)
+      ansible.builtin.command: pkcs11-tool --module {{ pkcs11_module_path }} -O
+      register: objects
+      changed_when: false
+      failed_when: false
+
+    - name: Resultado del descubrimiento
+      ansible.builtin.debug:
+        msg:
+          - "USB (clase 0b = CCID): {{ usb.stdout_lines }}"
+          - "Slots: {{ slots.stdout_lines }}"
+          - "Objetos: {{ objects.stdout_lines }}"

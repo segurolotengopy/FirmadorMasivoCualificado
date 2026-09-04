@@ -1,0 +1,7 @@
+---
+- name: daemon-reload
+  ansible.builtin.systemd:
+    daemon_reload: true
+- name: recargar udev
+  ansible.builtin.shell: udevadm control --reload-rules && udevadm trigger --subsystem-match=usb --action=add
+  changed_when: true

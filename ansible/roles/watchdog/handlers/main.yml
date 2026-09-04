@@ -1,0 +1,7 @@
+---
+- name: daemon-reload
+  ansible.builtin.systemd:
+    daemon_reload: true
+- name: daemon-reexec
+  ansible.builtin.command: systemctl daemon-reexec
+  changed_when: true

@@ -1,0 +1,37 @@
+---
+# Primer contacto con cada MiniPC (por la LAN de la sede). Genera el par de claves WireGuard
+# EN el nodo y muestra la clave pública para copiarla en terraform.tfvars (signing_nodes).
+# Uso: ansible-playbook playbooks/00-bootstrap-keys.yml -i <ip_lan>, -u opsadmin -k -K
+- name: Bootstrap de claves WireGuard en los nodos
+  hosts: all
+  become: true
+  tasks:
+    - name: Instalar wireguard-tools
+      ansible.builtin.apt:
+        name: [wireguard-tools]
+        update_cache: true
+
+    - name: Crear /etc/wireguard
+      ansible.builtin.file:
+        path: /etc/wireguard
+        state: directory
+        mode: "0700"
+
+    - name: Generar clave privada si no existe (nunca sale del nodo)
+      ansible.builtin.shell: |
+        set -o pipefail
+        umask 077
+        [ -s /etc/wireguard/node.key ] || wg genkey > /etc/wireguard/node.key
+        wg pubkey < /etc/wireguard/node.key > /etc/wireguard/node.pub
+      args:
+        executable: /bin/bash
+        creates: /etc/wireguard/node.pub
+
+    - name: Leer clave pública
+      ansible.builtin.slurp:
+        src: /etc/wireguard/node.pub
+      register: pub
+
+    - name: Clave pública a registrar en Terraform (signing_nodes.<nodo>.wg_pubkey)
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }}: {{ pub.content | b64decode | trim }}"

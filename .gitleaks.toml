@@ -1,0 +1,13 @@
+# Configuración de Gitleaks: hereda las reglas por defecto y excluye marcadores
+# de plantilla que no son secretos. Cualquier valor real del vault, tfvars o
+# claves WireGuard está fuera del repositorio por .gitignore.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Marcadores de plantilla y nombres de parámetros PKCS#11"
+regexes = [
+  '''REEMPLAZAR_[A-Z0-9_]+''',
+  '''PSK_DESDE_SSM_[a-z0-9-]+''',
+  '''pkcs11_(key|cert|token)_label''',
+]

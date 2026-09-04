@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# Selfcheck funcional: ¿el token es visible por PKCS#11? Escalado con contador persistente en /run.
+MODULE="{{ pkcs11_module_path }}"
+STATE=/run/firma-selfcheck.fails
+LOG={{ firma_log_dir }}/hardware-events.jsonl
+FAILS=$(cat $STATE 2>/dev/null || echo 0)
+
+emit() { printf '{"ts":"%s","source":"selfcheck","event":"%s","fails":%s}\n' "$(date -u +%FT%TZ)" "$1" "$FAILS" >> "$LOG"; logger -t firma-selfcheck "$1 fails=$FAILS"; }
+
+# 1) Presencia física (regla udev) 
+if [ ! -e /dev/token-f2 ]; then
+  FAILS=$((FAILS+1)); echo $FAILS > $STATE; emit "token_device_missing"
+  # Sin token físico no hay nada que reiniciar: el ALB ya retiró el nodo vía /health.
+  exit 0
+fi
+
+# 2) Visibilidad lógica (pcscd + módulo PKCS#11) con timeout duro
+if timeout 15 pkcs11-tool --module "$MODULE" -L 2>/dev/null | grep -q "token label"; then
+  [ "$FAILS" -gt 0 ] && emit "token_recovered"
+  echo 0 > $STATE
+  exit 0
+fi
+
+FAILS=$((FAILS+1)); echo $FAILS > $STATE
+case $FAILS in
+  1|2) emit "token_not_visible" ;;
+  3)   emit "escalate_restart_pcscd"; systemctl restart pcscd.service; sleep 3; systemctl kill -s SIGUSR1 firma-api.service ;;
+  5)   emit "escalate_restart_api"; systemctl restart firma-api.service ;;
+  8)   emit "escalate_usb_reset"
+       # Reset lógico del puerto USB del token (equivale a extraer/insertar)
+       DEV=$(readlink -f /dev/token-f2 2>/dev/null); BUSPATH=$(udevadm info -q path -n "$DEV" 2>/dev/null)
+       if [ -n "$BUSPATH" ]; then PORT=$(basename "$BUSPATH"); echo "$PORT" > /sys/bus/usb/drivers/usb/unbind; sleep 2; echo "$PORT" > /sys/bus/usb/drivers/usb/bind; fi ;;
+  *)   [ $((FAILS % 30)) -eq 0 ] && emit "still_failing_manual_intervention_required" ;;
+esac
+exit 0

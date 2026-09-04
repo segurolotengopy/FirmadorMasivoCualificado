@@ -1,0 +1,41 @@
+---
+- name: Directorio de logs del nodo (eventos de hardware)
+  ansible.builtin.file:
+    path: "{{ firma_log_dir }}"
+    state: directory
+    owner: "{{ firma_user }}"
+    group: "{{ firma_group }}"
+    mode: "0750"
+
+- name: Script de eventos del token
+  ansible.builtin.copy:
+    src: token-f2-event
+    dest: /usr/local/bin/token-f2-event
+    mode: "0755"
+
+- name: Unidad oneshot disparada por udev al conectar el token
+  ansible.builtin.copy:
+    src: token-f2-attached.service
+    dest: /etc/systemd/system/token-f2-attached.service
+    mode: "0644"
+  notify: daemon-reload
+
+- name: Regla udev de anclaje por número de serie
+  ansible.builtin.template:
+    src: 99-token-f2.rules.j2
+    dest: /etc/udev/rules.d/99-token-f2.rules
+    mode: "0644"
+  notify: recargar udev
+
+- name: Aplicar reglas ahora
+  ansible.builtin.meta: flush_handlers
+
+- name: Comprobar que el token está anclado en /dev/token-f2
+  ansible.builtin.stat:
+    path: /dev/token-f2
+  register: tok
+
+- name: Advertencia si el token no está presente (no bloquea el aprovisionamiento)
+  ansible.builtin.debug:
+    msg: "ATENCION: /dev/token-f2 no existe en {{ inventory_hostname }}. Verificar que el token con serial {{ token_serial }} esté insertado."
+  when: not tok.stat.exists

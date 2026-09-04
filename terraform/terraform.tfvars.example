@@ -1,0 +1,36 @@
+# Copiar a terraform.tfvars y completar. NUNCA versionar terraform.tfvars con datos reales.
+project_name = "firma-f2"
+environment  = "prod"
+aws_region   = "sa-east-1"
+
+vpc_cidr             = "10.10.0.0/16"
+public_subnet_cidrs  = ["10.10.0.0/24", "10.10.1.0/24"]
+private_subnet_cidrs = ["10.10.10.0/24", "10.10.11.0/24"]
+
+wg_cidr            = "10.200.0.0/24"
+wg_gateway_address = "10.200.0.1"
+wg_listen_port     = 51820
+
+# IPs públicas de las sedes en Paraguay (si son estáticas). Dejar 0.0.0.0/0 si son dinámicas.
+wg_allowed_source_cidrs = ["0.0.0.0/0"]
+
+# Claves públicas generadas en cada MiniPC (salida del playbook `ansible/playbooks/00-bootstrap-keys.yml`).
+signing_nodes = {
+  node-py-01 = { wg_address = "10.200.0.11", wg_pubkey = "…", location = "Asunción - Sede A" }
+  node-py-02 = { wg_address = "10.200.0.12", wg_pubkey = "…", location = "Asunción - Sede A" }
+  node-py-03 = { wg_address = "10.200.0.13", wg_pubkey = "…", location = "Asunción - Sede B" }
+}
+
+api_port     = 8443
+api_protocol = "HTTPS"
+
+# Certificado ACM para el listener del ALB (ACM Private CA o público con DNS interno).
+alb_certificate_arn = "arn:aws:acm:sa-east-1:123456789012:certificate/xxxxxxxx"
+
+# Security Groups de la plataforma SaaS que consumirá la API.
+api_consumer_sg_ids = ["sg-0123456789abcdef0"]
+api_consumer_cidrs  = []
+
+admin_ssh_cidrs     = [] # vacío = solo SSM Session Manager
+alarm_sns_topic_arn = "arn:aws:sns:sa-east-1:123456789012:firma-f2-alertas"
+log_retention_days  = 400

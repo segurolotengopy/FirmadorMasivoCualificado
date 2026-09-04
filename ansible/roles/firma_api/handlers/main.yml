@@ -1,0 +1,6 @@
+---
+- name: reiniciar api
+  ansible.builtin.systemd:
+    name: firma-api
+    state: restarted
+    daemon_reload: true

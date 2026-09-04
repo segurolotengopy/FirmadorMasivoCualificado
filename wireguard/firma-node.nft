@@ -1,0 +1,23 @@
+#!/usr/sbin/nft -f
+# Cortafuegos del nodo de firma (nftables). Cargado por PostUp de wg0 y por el rol Ansible.
+# Principio: nada entra desde la LAN salvo SSH de administración; la API solo por wg0.
+table inet firma_node {
+  chain input {
+    type filter hook input priority 0; policy drop;
+    ct state established,related accept
+    iif lo accept
+    ip protocol icmp accept
+    # API de firma únicamente a través del túnel (ALB en AWS)
+    iifname "wg0" tcp dport 8443 accept
+    # SSH de administración: por el túnel (Bolivia via AWS) y, como contingencia, desde la LAN local
+    iifname "wg0" tcp dport 22 accept
+    iifname != "wg0" tcp dport 22 ip saddr { 192.168.0.0/16, 10.0.0.0/8 } accept
+    # Respuesta a WireGuard (UDP saliente iniciado por el nodo) cubierta por ct state
+  }
+  chain forward {
+    type filter hook forward priority 0; policy drop;
+  }
+  chain output {
+    type filter hook output priority 0; policy accept;
+  }
+}

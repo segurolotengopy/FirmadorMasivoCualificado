@@ -1,0 +1,54 @@
+---
+# =============================================================================
+#  site.yml - Aprovisionamiento completo e idempotente de los nodos de firma.
+#  Ejecutar desde Bolivia:  ansible-playbook site.yml --ask-vault-pass
+#  Los 3 nodos se configuran en paralelo con configuración idéntica (forks=3).
+# =============================================================================
+- name: Nodos transaccionales de Firma Cualificada F2
+  hosts: signing_nodes
+  become: true
+  serial: "100%"
+
+  pre_tasks:
+    - name: Verificar que el nodo ejecuta Ubuntu 22.04/24.04
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['distribution'] == 'Ubuntu'
+          - ansible_facts['distribution_major_version'] in ['22', '24']
+        fail_msg: "Solo se soporta Ubuntu 22.04 / 24.04 (detectado {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }})"
+
+    - name: Verificar que el serial del token fue definido en host_vars
+      ansible.builtin.assert:
+        that: token_serial is defined and not token_serial.startswith('REEMPLAZAR')
+        fail_msg: "Definir token_serial en inventory/host_vars/{{ inventory_hostname }}.yml (usar playbooks/01-discover-token.yml)"
+
+  roles:
+    - role: common
+      tags: [common]
+    - role: pcsc
+      tags: [pcsc, middleware]
+    - role: udev_token
+      tags: [udev, token]
+    - role: wireguard
+      tags: [wireguard, vpn]
+    - role: firma_api
+      tags: [api]
+    - role: watchdog
+      tags: [watchdog, selfheal]
+
+  post_tasks:
+    - name: Esperar a que la API responda en la IP overlay
+      ansible.builtin.uri:
+        url: "{{ 'https' if api_tls_enabled else 'http' }}://{{ api_bind_address }}:{{ api_port }}/health"
+        validate_certs: false
+        status_code: [200, 503]
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status in [200, 503]
+      tags: [verify]
+
+    - name: Estado final del nodo
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }} -> HTTP {{ health.status }} | {{ health.json | default({}) }}"
+      tags: [verify]

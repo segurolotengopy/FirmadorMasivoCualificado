@@ -1,0 +1,24 @@
+---
+# Rotación del PIN/API key en los 3 nodos sin downtime: reescribe el EnvironmentFile y
+# envía SIGUSR1 a la API (recarga sesión PKCS#11 sin reiniciar el proceso).
+- name: Rotación de credenciales del servicio de firma
+  hosts: signing_nodes
+  become: true
+  tasks:
+    - name: Reescribir archivo de entorno
+      ansible.builtin.template:
+        src: ../roles/firma_api/templates/firma-api.env.j2
+        dest: "{{ firma_conf_dir }}/firma-api.env"
+        owner: root
+        group: "{{ firma_group }}"
+        mode: "0640"
+      notify: recargar api
+
+    - name: Verificar
+      ansible.builtin.meta: flush_handlers
+
+  handlers:
+    - name: recargar api
+      ansible.builtin.systemd:
+        name: firma-api
+        state: restarted

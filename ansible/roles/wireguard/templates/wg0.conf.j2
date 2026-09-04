@@ -1,0 +1,14 @@
+# {{ ansible_managed }}
+# Túnel exclusivo {{ inventory_hostname }} <-> gateway AWS
+[Interface]
+Address    = {{ wg_address }}/24
+PrivateKey = {{ wg_private_key }}
+PostUp     = nft -f /etc/nftables.d/firma-node.nft
+PostDown   = nft delete table inet firma_node || true
+
+[Peer]
+PublicKey           = {{ wg_gateway_public_key }}
+PresharedKey        = {{ wg_preshared_key }}
+Endpoint            = {{ wg_gateway_endpoint }}
+AllowedIPs          = {{ wg_overlay_cidr }}, {{ aws_vpc_cidr }}
+PersistentKeepalive = 20

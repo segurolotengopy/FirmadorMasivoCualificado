@@ -1,0 +1,28 @@
+# =============================================================================
+#  WireGuard - Gateway AWS  -  referencia del archivo que genera user_data
+#  (terraform/user_data/wg-gateway.sh.tpl). NO editar a mano en la instancia:
+#  cualquier cambio se hace en Terraform (signing_nodes) y se re-aplica.
+# =============================================================================
+[Interface]
+Address    = 10.200.0.1/24
+ListenPort = 51820
+PrivateKey = <desde SSM /firma-f2/prod/wg/gateway/private_key>
+PostUp   = iptables -A FORWARD -i wg0 -d 10.10.0.0/16 -j ACCEPT; iptables -A FORWARD -o wg0 -s 10.10.0.0/16 -p tcp --dport 8443 -j ACCEPT; iptables -A FORWARD -o wg0 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT; iptables -A FORWARD -j DROP
+PostDown = iptables -F FORWARD
+
+# Un [Peer] por MiniPC. AllowedIPs /32 => cada túnel es exclusivo: un nodo no puede
+# suplantar la IP de otro ni ver su tráfico (cryptokey routing).
+[Peer]
+PublicKey    = <pubkey node-py-01>
+PresharedKey = <desde SSM .../nodes/node-py-01/preshared_key>
+AllowedIPs   = 10.200.0.11/32
+
+[Peer]
+PublicKey    = <pubkey node-py-02>
+PresharedKey = <desde SSM .../nodes/node-py-02/preshared_key>
+AllowedIPs   = 10.200.0.12/32
+
+[Peer]
+PublicKey    = <pubkey node-py-03>
+PresharedKey = <desde SSM .../nodes/node-py-03/preshared_key>
+AllowedIPs   = 10.200.0.13/32

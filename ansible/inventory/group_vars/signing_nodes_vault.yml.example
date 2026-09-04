@@ -1,0 +1,10 @@
+# Cifrar con:  ansible-vault encrypt inventory/group_vars/signing_nodes_vault.yml
+# (renombrar este .example una vez completado). NUNCA versionar en claro.
+vault_token_pin: "PIN_DEL_TOKEN"
+vault_api_key: "clave-larga-aleatoria-compartida-con-la-plataforma-saas"
+vault_wg_gateway_endpoint: "203.0.113.10:51820"
+vault_wg_gateway_public_key: "PUBKEY_GATEWAY_DESDE_SSM"
+vault_wg_preshared_keys:
+  node-py-01: "PSK_DESDE_SSM_node-py-01"
+  node-py-02: "PSK_DESDE_SSM_node-py-02"
+  node-py-03: "PSK_DESDE_SSM_node-py-03"

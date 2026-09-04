@@ -1,0 +1,25 @@
+# =============================================================================
+#  WireGuard - Nodo de firma (MiniPC Paraguay)  -  plantilla estandarizada
+#  Renderizada por Ansible (roles/wireguard/templates/wg0.conf.j2). Se incluye aquí
+#  como referencia documental del estándar.
+# =============================================================================
+[Interface]
+# IP overlay del nodo (10.200.0.11 / .12 / .13). Es la IP que el ALB usa como target.
+Address    = {{ WG_NODE_ADDRESS }}/24
+# Clave privada generada EN el nodo con `wg genkey`; nunca sale del equipo.
+PrivateKey = {{ WG_NODE_PRIVATE_KEY }}
+# Sin ListenPort fijo: el nodo está detrás de NAT y solo inicia conexiones salientes.
+# Cortafuegos: la API solo escucha en la IP overlay (ver rol api), nada expuesto a la LAN.
+PostUp   = nft -f /etc/nftables.d/firma-node.nft
+PostDown = nft delete table inet firma_node
+
+[Peer]
+# Gateway WireGuard en AWS
+PublicKey           = {{ WG_GATEWAY_PUBLIC_KEY }}
+PresharedKey        = {{ WG_NODE_PRESHARED_KEY }}
+Endpoint            = {{ WG_GATEWAY_ENDPOINT }}          # <EIP>:51820
+# Solo se enruta la overlay y la VPC de AWS por el túnel (no full-tunnel: el nodo sigue
+# saliendo a Internet por la LAN para apt/OCSP/TSA).
+AllowedIPs          = {{ WG_OVERLAY_CIDR }}, {{ AWS_VPC_CIDR }}
+# Keepalive obligatorio: mantiene el mapeo NAT abierto para que AWS pueda iniciar tráfico.
+PersistentKeepalive = 20

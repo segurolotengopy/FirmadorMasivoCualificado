@@ -1,0 +1,19 @@
+# {{ ansible_managed }}
+# Anclaje estático del token criptográfico F2 por número de serie.
+# Independientemente del puerto físico o del orden de enumeración tras un reinicio, el token
+# de este nodo aparece siempre como /dev/token-f2 y expone el device unit systemd
+# "dev-token\x2df2.device", del que depende el microservicio de firma.
+#
+# Nodo: {{ inventory_hostname }} ({{ node_location | default('') }})
+# Token: {{ token_vendor_id }}:{{ token_product_id }} serial={{ token_serial }}
+
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="{{ token_vendor_id }}", ATTR{idProduct}=="{{ token_product_id }}", ATTR{serial}=="{{ token_serial }}", \
+  SYMLINK+="token-f2", MODE="0660", GROUP="{{ firma_group }}", TAG+="systemd", \
+  ENV{ID_FIRMA_TOKEN}="1", ENV{SYSTEMD_WANTS}+="token-f2-attached.service"
+
+# Cualquier otro token de la misma familia conectado a este nodo NO se ancla (evita firmar con el token equivocado).
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="{{ token_vendor_id }}", ATTR{idProduct}=="{{ token_product_id }}", ATTR{serial}!="{{ token_serial }}", \
+  ENV{ID_FIRMA_TOKEN_FOREIGN}="1", RUN+="/usr/local/bin/token-f2-event foreign $attr{serial}"
+
+# Extracción del token: registrar evento y notificar a la API (que invalida su sesión PKCS#11).
+ACTION=="remove", SUBSYSTEM=="usb", ENV{ID_FIRMA_TOKEN}=="1", RUN+="/usr/local/bin/token-f2-event removed"

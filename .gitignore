@@ -1,0 +1,38 @@
+# --- Terraform: estado, variables reales y proveedores descargados ---
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/terraform.tfvars
+terraform/*.auto.tfvars
+terraform/crash.log
+# .terraform.lock.hcl SÍ se versiona: fija las versiones de proveedores en CI.
+
+# --- Ansible: vault en claro, colecciones descargadas, retry ---
+ansible/inventory/group_vars/*_vault.yml
+ansible/inventory/host_vars/*_vault.yml
+ansible/collections/
+ansible/*.retry
+ansible/.vault-pass*
+
+# --- WireGuard: nunca claves ni configuraciones con material real ---
+wireguard/*.key
+wireguard/*.psk
+wireguard/wg0-*.conf
+!wireguard/wg0-node.conf.template
+!wireguard/wg0-gateway.conf.reference
+
+# --- Python ---
+api/.venv/
+api/venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+
+# --- Certificados, secretos y artefactos locales ---
+*.pem
+*.p12
+*.pfx
+.env
+.env.*
+*.jsonl

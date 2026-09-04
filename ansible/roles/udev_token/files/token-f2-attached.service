@@ -1,0 +1,8 @@
+[Unit]
+Description=Token F2 conectado: re-enumerar lector y reabrir sesion PKCS#11 de la API
+# Arrancado por udev via ENV{SYSTEMD_WANTS} cuando aparece /dev/token-f2
+After=pcscd.socket
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/token-f2-event attached

@@ -1,0 +1,5 @@
+---
+# Solo se requiere amazon.aws si se usa el lookup aws_ssm (ver group_vars). El resto usa módulos builtin.
+collections:
+  - name: amazon.aws     # solo si se usa el lookup aws_ssm en lugar de vault
+    version: ">=7.0.0"

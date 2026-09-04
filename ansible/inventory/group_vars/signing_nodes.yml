@@ -1,0 +1,58 @@
+# ---------------------------------------------------------------------------
+# Variables comunes a los 3 nodos. Los secretos viven en signing_nodes_vault.yml
+# (cifrado con ansible-vault) y se referencian aquí.
+# ---------------------------------------------------------------------------
+project_name: firma-f2
+environment_name: prod
+timezone: America/Asuncion
+
+# --- Usuario de servicio ---
+firma_user: firma
+firma_group: firma
+firma_home: /opt/firma-api
+firma_conf_dir: /etc/firma-api
+firma_log_dir: /var/log/firma-api
+
+# --- API ---
+api_port: 8443
+api_bind_address: "{{ wg_address }}"        # solo escucha en la IP overlay
+api_tls_enabled: true                        # certificado autofirmado por nodo (el ALB no valida CA)
+api_key: "{{ vault_api_key }}"               # cabecera X-Api-Key exigida a la plataforma SaaS
+api_max_pdf_mb: 25
+api_workers: 1                               # un token = un canal de firma; la concurrencia se serializa
+api_watchdog_sec: 30
+
+# --- PKCS#11 / Token ---
+# Módulo por defecto OpenSC. Si Confirma entrega SafeNet eToken 5110 con applet no soportado por
+# OpenSC, cambiar a /usr/lib/libeToken.so (SafeNet Authentication Client) y desplegar el .so con el rol pcsc.
+pkcs11_module_path: /usr/lib/x86_64-linux-gnu/opensc-pkcs11.so
+pkcs11_token_label: ""                       # vacío = primer token presente; recomendable fijar tras descubrimiento
+pkcs11_cert_label: ""                        # vacío = autodetección del certificado de firma
+pkcs11_key_label: ""
+pkcs11_user_pin: "{{ vault_token_pin }}"
+
+# --- Firma PAdES ---
+sig_reason_default: "Emisión de póliza electrónica"
+sig_location_default: "Asunción, Paraguay"
+sig_contact_default: "operaciones@interseguros360.com"
+tsa_url: ""                                  # URL de la TSA (p.ej. la de Confirma) para PAdES-T. Vacío = sin sello de tiempo.
+embed_validation_info: false                 # true => PAdES-B-LT (requiere salida OCSP/CRL desde el nodo)
+
+# --- WireGuard ---
+wg_interface: wg0
+wg_overlay_cidr: 10.200.0.0/24
+aws_vpc_cidr: 10.10.0.0/16
+wg_gateway_endpoint: "{{ vault_wg_gateway_endpoint }}"      # <EIP>:51820 (output Terraform)
+wg_gateway_public_key: "{{ vault_wg_gateway_public_key }}"  # SSM /firma-f2/prod/wg/gateway/public_key
+wg_preshared_key: "{{ vault_wg_preshared_keys[inventory_hostname] }}"
+# Alternativa sin vault (requiere boto3 y credenciales AWS en el equipo de administración):
+# wg_gateway_public_key: "{{ lookup('amazon.aws.aws_ssm', '/firma-f2/prod/wg/gateway/public_key', region='sa-east-1') }}"
+# wg_preshared_key: "{{ lookup('amazon.aws.aws_ssm', '/firma-f2/prod/wg/nodes/' ~ inventory_hostname ~ '/preshared_key', region='sa-east-1', decrypt=true) }}"
+
+# --- Telemetría hacia AWS ---
+telemetry_enabled: true
+telemetry_endpoint: ""                       # p.ej. https://telemetria.interna/ingest (vía túnel). Vacío = solo log local.
+
+# --- Watchdog ---
+hw_watchdog_module: iTCO_wdt                 # Intel NUC/Beelink x86. Fallback automático a softdog.
+runtime_watchdog_sec: 30

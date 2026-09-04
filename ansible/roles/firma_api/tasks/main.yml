@@ -1,0 +1,91 @@
+---
+- name: Directorios de la aplicación
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner | default(firma_user) }}"
+    group: "{{ firma_group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ firma_home }}", mode: "0750" }
+    - { path: "{{ firma_conf_dir }}", owner: root, mode: "0750" }
+    - { path: "{{ firma_conf_dir }}/tls", owner: root, mode: "0750" }
+    - { path: "{{ firma_log_dir }}", mode: "0750" }
+
+- name: Código del microservicio (desde el repositorio, directorio api/)
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../api/"
+    dest: "{{ firma_home }}/"
+    owner: "{{ firma_user }}"
+    group: "{{ firma_group }}"
+    mode: "u=rwX,g=rX,o="
+  notify: reiniciar api
+
+- name: Entorno virtual y dependencias (versiones fijadas)
+  ansible.builtin.pip:
+    requirements: "{{ firma_home }}/requirements.txt"
+    virtualenv: "{{ firma_home }}/venv"
+    virtualenv_command: "/usr/bin/python3 -m venv"
+  become: true
+  become_user: "{{ firma_user }}"
+  notify: reiniciar api
+
+- name: Certificado TLS del nodo (autofirmado, válido para la IP overlay; el ALB no valida CA)
+  ansible.builtin.command:
+    cmd: >
+      openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 1825
+      -subj "/CN={{ inventory_hostname }}.firma.interno/O=Interseguros/C=PY"
+      -addext "subjectAltName=IP:{{ api_bind_address }},DNS:{{ inventory_hostname }}"
+      -keyout {{ firma_conf_dir }}/tls/node.key -out {{ firma_conf_dir }}/tls/node.crt
+    creates: "{{ firma_conf_dir }}/tls/node.crt"
+  when: api_tls_enabled
+
+- name: Permisos del material TLS
+  ansible.builtin.file:
+    path: "{{ firma_conf_dir }}/tls/{{ item }}"
+    owner: root
+    group: "{{ firma_group }}"
+    mode: "0640"
+  loop: [node.key, node.crt]
+  when: api_tls_enabled
+
+- name: Archivo de entorno con secretos (PIN del token, API key)
+  ansible.builtin.template:
+    src: firma-api.env.j2
+    dest: "{{ firma_conf_dir }}/firma-api.env"
+    owner: root
+    group: "{{ firma_group }}"
+    mode: "0640"
+  no_log: true
+  notify: reiniciar api
+
+- name: Unidad systemd del microservicio
+  ansible.builtin.template:
+    src: firma-api.service.j2
+    dest: /etc/systemd/system/firma-api.service
+    mode: "0644"
+  notify: reiniciar api
+
+- name: Rotación de logs de auditoría (nunca se borran localmente antes de 400 días)
+  ansible.builtin.copy:
+    dest: /etc/logrotate.d/firma-api
+    mode: "0644"
+    content: |
+      {{ firma_log_dir }}/*.jsonl {
+          daily
+          rotate 400
+          compress
+          delaycompress
+          missingok
+          notifempty
+          dateext
+          copytruncate
+          create 0640 {{ firma_user }} {{ firma_group }}
+      }
+
+- name: Servicio habilitado y activo
+  ansible.builtin.systemd:
+    name: firma-api
+    enabled: true
+    state: started
+    daemon_reload: true

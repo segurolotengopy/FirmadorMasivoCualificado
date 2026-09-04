@@ -1,0 +1,6 @@
+---
+- name: reiniciar pcscd
+  ansible.builtin.systemd:
+    name: pcscd.service
+    state: restarted
+    daemon_reload: true

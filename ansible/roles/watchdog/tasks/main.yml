@@ -1,0 +1,77 @@
+---
+# Tres niveles de autorrecuperación:
+#  1. Hardware: watchdog de la placa (iTCO_wdt) alimentado por systemd (RuntimeWatchdogSec).
+#     Si el kernel/systemd se congela, la placa reinicia el equipo.
+#  2. Servicios: Restart=always + WatchdogSec en firma-api (rol firma_api), pcscd y wg0.
+#  3. Funcional: firma-selfcheck verifica cada minuto que el token es visible vía PKCS#11 y
+#     escala: reiniciar pcscd -> reiniciar API -> registrar incidente.
+
+- name: Cargar módulo de watchdog por hardware al arranque (fallback a softdog)
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/watchdog.conf
+    mode: "0644"
+    content: |
+      {{ hw_watchdog_module }}
+      softdog
+
+- name: Cargar módulo ahora (el hardware puede no exponer iTCO_wdt; softdog como respaldo)
+  ansible.builtin.command: modprobe {{ item }}
+  loop: ["{{ hw_watchdog_module }}", softdog]
+  failed_when: false
+  changed_when: false
+
+- name: Directorio system.conf.d
+  ansible.builtin.file:
+    path: /etc/systemd/system.conf.d
+    state: directory
+    mode: "0755"
+
+- name: Watchdog de systemd (reinicio físico si el sistema se congela)
+  ansible.builtin.copy:
+    dest: /etc/systemd/system.conf.d/watchdog.conf
+    mode: "0644"
+    content: |
+      [Manager]
+      RuntimeWatchdogSec={{ runtime_watchdog_sec }}s
+      RebootWatchdogSec=10min
+      ShutdownWatchdogSec=10min
+  notify: daemon-reexec
+
+- name: Selfcheck funcional del token
+  ansible.builtin.template:
+    src: firma-selfcheck.sh.j2
+    dest: /usr/local/bin/firma-selfcheck
+    mode: "0755"
+
+- name: Unidad y timer del selfcheck
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ item.name }}"
+    mode: "0644"
+    content: "{{ item.content }}"
+  loop:
+    - name: firma-selfcheck.service
+      content: |
+        [Unit]
+        Description=Selfcheck funcional del token F2 y escalado de recuperacion
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/local/bin/firma-selfcheck
+    - name: firma-selfcheck.timer
+      content: |
+        [Unit]
+        Description=Timer selfcheck (1 min)
+        [Timer]
+        OnBootSec=2min
+        OnUnitActiveSec=1min
+        [Install]
+        WantedBy=timers.target
+  loop_control:
+    label: "{{ item.name }}"
+  notify: daemon-reload
+
+- name: Timer activo
+  ansible.builtin.systemd:
+    name: firma-selfcheck.timer
+    enabled: true
+    state: started
+    daemon_reload: true

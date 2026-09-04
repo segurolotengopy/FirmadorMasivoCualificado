@@ -1,0 +1,127 @@
+---
+- name: WireGuard y nftables
+  ansible.builtin.apt:
+    name: [wireguard, wireguard-tools, nftables]
+    state: present
+
+- name: Clave privada del nodo (generada por playbooks/00-bootstrap-keys.yml)
+  ansible.builtin.slurp:
+    src: /etc/wireguard/node.key
+  register: wg_key_file
+
+- name: Registrar clave privada en memoria (no se imprime)
+  ansible.builtin.set_fact:
+    wg_private_key: "{{ wg_key_file.content | b64decode | trim }}"
+  no_log: true
+
+- name: Directorio de políticas nftables
+  ansible.builtin.file:
+    path: /etc/nftables.d
+    state: directory
+    mode: "0755"
+
+- name: Política de cortafuegos del nodo
+  ansible.builtin.template:
+    src: firma-node.nft.j2
+    dest: /etc/nftables.d/firma-node.nft
+    mode: "0644"
+  notify: reiniciar wireguard
+
+- name: Cargar política nftables al arranque (antes de wg0)
+  ansible.builtin.copy:
+    dest: /etc/nftables.conf
+    mode: "0755"
+    content: |
+      #!/usr/sbin/nft -f
+      flush ruleset
+      include "/etc/nftables.d/firma-node.nft"
+  notify: reiniciar wireguard
+
+- name: nftables habilitado
+  ansible.builtin.systemd:
+    name: nftables
+    enabled: true
+    state: started
+
+- name: Configuración del túnel
+  ansible.builtin.template:
+    src: wg0.conf.j2
+    dest: "/etc/wireguard/{{ wg_interface }}.conf"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  notify: reiniciar wireguard
+
+- name: Directorio override wg-quick
+  ansible.builtin.file:
+    path: "/etc/systemd/system/wg-quick@{{ wg_interface }}.service.d"
+    state: directory
+    mode: "0755"
+
+- name: Túnel persistente con reinicio automático ante fallo
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/wg-quick@{{ wg_interface }}.service.d/override.conf"
+    mode: "0644"
+    content: |
+      [Unit]
+      StartLimitIntervalSec=0
+      [Service]
+      Restart=on-failure
+      RestartSec=10
+  notify: reiniciar wireguard
+
+- name: wg-quick@wg0 habilitado y activo
+  ansible.builtin.systemd:
+    name: "wg-quick@{{ wg_interface }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Watchdog del túnel (reinicia wg0 si no hay handshake en 3 minutos)
+  ansible.builtin.copy:
+    dest: /usr/local/bin/wg-watchdog
+    mode: "0755"
+    content: |
+      #!/usr/bin/env bash
+      # Si el último handshake con el gateway supera 180 s, reinicia el túnel.
+      HS=$(wg show {{ wg_interface }} latest-handshakes | awk '{print $2}' | head -1)
+      NOW=$(date +%s)
+      if [ -z "$HS" ] || [ "$HS" = "0" ] || [ $((NOW-HS)) -gt 180 ]; then
+        logger -t wg-watchdog "sin handshake reciente (hs=$HS) -> reiniciando {{ wg_interface }}"
+        printf '{"ts":"%s","source":"wg-watchdog","event":"tunnel_restart","last_handshake":"%s"}\n' "$(date -u +%FT%TZ)" "$HS" >> {{ firma_log_dir }}/hardware-events.jsonl
+        systemctl restart wg-quick@{{ wg_interface }}
+      fi
+
+- name: Unidad y timer del watchdog del túnel
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ item.name }}"
+    mode: "0644"
+    content: "{{ item.content }}"
+  loop:
+    - name: wg-watchdog.service
+      content: |
+        [Unit]
+        Description=Watchdog del tunel WireGuard
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/local/bin/wg-watchdog
+    - name: wg-watchdog.timer
+      content: |
+        [Unit]
+        Description=Timer watchdog WireGuard (1 min)
+        [Timer]
+        OnBootSec=3min
+        OnUnitActiveSec=1min
+        [Install]
+        WantedBy=timers.target
+  loop_control:
+    label: "{{ item.name }}"
+  notify: daemon-reload
+
+- name: Timer activo
+  ansible.builtin.systemd:
+    name: wg-watchdog.timer
+    enabled: true
+    state: started
+    daemon_reload: true

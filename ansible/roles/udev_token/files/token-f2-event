@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Invocado por udev (add/remove) y por token-f2-attached.service.
+# Registra el evento en el log de auditoría del nodo y coordina pcscd/API.
+EVENT="${1:-unknown}"; EXTRA="${2:-}"
+TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+logger -t token-f2 "event=$EVENT extra=$EXTRA"
+printf '{"ts":"%s","source":"udev","event":"token_%s","detail":"%s"}\n' "$TS" "$EVENT" "$EXTRA" >> /var/log/firma-api/hardware-events.jsonl 2>/dev/null || true
+case "$EVENT" in
+  attached)
+    # Reinicio controlado de pcscd para re-enumerar el lector y aviso a la API para reabrir sesión.
+    systemctl restart pcscd.service
+    sleep 2
+    systemctl kill -s SIGUSR1 firma-api.service 2>/dev/null || true
+    ;;
+  removed)
+    systemctl kill -s SIGUSR1 firma-api.service 2>/dev/null || true
+    ;;
+esac
+exit 0

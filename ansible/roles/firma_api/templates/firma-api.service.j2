@@ -1,0 +1,49 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Microservicio de Firma Cualificada F2 (FastAPI + pyHanko + PKCS#11)
+Documentation=file://{{ firma_home }}/README.md
+After=network-online.target pcscd.socket wg-quick@{{ wg_interface }}.service
+Wants=network-online.target pcscd.socket
+# Si el token está anclado, la API arranca después de que systemd lo vea; si no está, arranca igual
+# y /health responde 503 hasta que aparezca (el ALB lo retira del pool mientras tanto).
+After=dev-token\x2df2.device
+StartLimitIntervalSec=0
+
+[Service]
+Type=notify
+NotifyAccess=main
+User={{ firma_user }}
+Group={{ firma_group }}
+WorkingDirectory={{ firma_home }}
+EnvironmentFile={{ firma_conf_dir }}/firma-api.env
+ExecStart={{ firma_home }}/venv/bin/python -m app
+# --- Autorrecuperación ---
+Restart=always
+RestartSec=5
+# La app envía WATCHDOG=1 cada {{ (api_watchdog_sec / 3) | int }} s; si el event loop se bloquea, systemd la mata y reinicia.
+WatchdogSec={{ api_watchdog_sec }}
+TimeoutStartSec=90
+TimeoutStopSec=20
+KillSignal=SIGTERM
+# --- Hardening ---
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+CapabilityBoundingSet=
+AmbientCapabilities=
+ReadWritePaths={{ firma_log_dir }}
+UMask=0077
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,4 @@
+---
+# Driver propietario opcional (p.ej. SafeNet Authentication Client). Si se define, se copia
+# desde files/ del rol y pkcs11_module_path debe apuntar a él.
+proprietary_pkcs11_deb: ""     # p.ej. safenetauthenticationclient_10.8.28_amd64.deb

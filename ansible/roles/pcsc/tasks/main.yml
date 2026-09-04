@@ -1,0 +1,58 @@
+---
+- name: Middleware PC/SC y PKCS#11 (OSS)
+  ansible.builtin.apt:
+    name:
+      - pcscd
+      - libccid
+      - pcsc-tools
+      - opensc
+      - opensc-pkcs11
+      - libpcsclite1
+    state: present
+
+- name: Driver propietario (solo si la certificadora lo exige)
+  when: proprietary_pkcs11_deb | length > 0
+  block:
+    - name: Copiar paquete del driver propietario
+      ansible.builtin.copy:
+        src: "{{ proprietary_pkcs11_deb }}"
+        dest: "/tmp/{{ proprietary_pkcs11_deb }}"
+        mode: "0644"
+    - name: Instalar driver propietario
+      ansible.builtin.apt:
+        deb: "/tmp/{{ proprietary_pkcs11_deb }}"
+      notify: reiniciar pcscd
+
+- name: Directorio override
+  ansible.builtin.file:
+    path: /etc/systemd/system/pcscd.service.d
+    state: directory
+    mode: "0755"
+
+- name: pcscd con auto-exit desactivado (demonio permanente, no on-demand)
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/pcscd.service.d/override.conf
+    mode: "0644"
+    content: |
+      [Service]
+      ExecStart=
+      ExecStart=/usr/sbin/pcscd --foreground --disable-polkit
+      Restart=always
+      RestartSec=3
+      [Unit]
+      StartLimitIntervalSec=0
+  notify: reiniciar pcscd
+
+- name: Servicio de tarjeta inteligente activo
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: started
+    enabled: true
+    daemon_reload: true
+  loop: [pcscd.socket, pcscd.service]
+
+- name: Verificar que el módulo PKCS#11 existe
+  ansible.builtin.stat:
+    path: "{{ pkcs11_module_path }}"
+  register: p11
+  failed_when: not p11.stat.exists

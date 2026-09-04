@@ -1,0 +1,7 @@
+# Identidad física del token de este nodo. Obtener con: ansible-playbook playbooks/01-discover-token.yml
+# idVendor/idProduct de referencia:
+#   SafeNet eToken 5110 (Thales/Gemalto): 0529:0620    Feitian ePass2003: 096e:0807
+token_vendor_id: "096e"
+token_product_id: "0807"
+token_serial: "REEMPLAZAR_SERIAL_NODO_01"
+node_location: "Asunción - Sede A"
