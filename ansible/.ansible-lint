@@ -1,0 +1,17 @@
+---
+# Perfil y excepciones aceptadas en la Fase 0 (ver PR fix/lint-ansible-inicial).
+# Todo lo que no está aquí se corrige, no se silencia.
+profile: basic
+offline: true
+
+skip_list:
+  # Nombres de tareas y handlers en español y minúscula inicial (convención del proyecto).
+  - name[casing]
+  # Variables compartidas entre roles (wg_*, token_*, api_*) definidas en group_vars/host_vars;
+  # el prefijo por rol no aporta claridad en un playbook monolítico de seis roles.
+  - var-naming[no-role-prefix]
+  # Comandos largos de descubrimiento del token (pkcs11-tool) y de nftables.
+  - yaml[line-length]
+
+exclude_paths:
+  - collections/
